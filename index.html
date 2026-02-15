@@ -1,254 +1,205 @@
-import React, { useState } from 'react'
-import { Upload, Download, Plus, Trash2, FileSpreadsheet, Check } from 'lucide-react'
-import * as XLSX from 'xlsx'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Daily Task Automation Tool</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-export default function TaskAutomationTool() {
-  const [excelFile, setExcelFile] = useState(null)
-  const [sheets, setSheets] = useState([])
-  const [selectedSheet, setSelectedSheet] = useState('')
-  const [columns, setColumns] = useState([])
-  const [selectedColumns, setSelectedColumns] = useState([])
-  const [newColumns, setNewColumns] = useState([])
-  const [processedData, setProcessedData] = useState(null)
-  const [newColumnName, setNewColumnName] = useState('')
-  const [showAddColumn, setShowAddColumn] = useState(false)
-  const [loading, setLoading] = useState(false)
+  <!-- Tailwind CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
 
-  // 🔐 Safe Formula Evaluator
-  const safeEvaluate = (expression) => {
-    try {
-      return Function('"use strict"; return (' + expression + ")")()
-    } catch {
-      return expression
-    }
+  <!-- XLSX CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen p-6">
+
+  <div class="max-w-6xl mx-auto bg-white rounded-2xl shadow-xl p-6">
+    <h1 class="text-3xl font-bold mb-6">
+      📊 Daily Task Automation Tool
+    </h1>
+
+    <!-- Upload -->
+    <div class="border-2 border-dashed border-gray-300 p-6 rounded-lg text-center mb-6">
+      <input type="file" id="fileInput" accept=".xlsx,.xls" />
+    </div>
+
+    <!-- Sheet Selection -->
+    <div id="sheetSection" class="hidden mb-4">
+      <select id="sheetSelect" class="w-full p-2 border rounded"></select>
+    </div>
+
+    <!-- Column Selection -->
+    <div id="columnsSection" class="hidden mb-6">
+      <h2 class="font-semibold mb-2">Select Columns</h2>
+      <div id="columnsContainer" class="grid grid-cols-2 md:grid-cols-4 gap-3"></div>
+    </div>
+
+    <!-- Add Column -->
+    <div id="newColumnSection" class="hidden mb-6">
+      <input id="newColumnName" placeholder="New column name"
+        class="border p-2 rounded mr-2" />
+      <button onclick="addNewColumn()"
+        class="bg-green-600 text-white px-4 py-2 rounded">
+        Add Column
+      </button>
+      <div id="newColumnsList" class="mt-4"></div>
+    </div>
+
+    <button onclick="processExcel()"
+      class="bg-blue-600 text-white px-6 py-2 rounded">
+      Process Data
+    </button>
+
+    <button id="downloadBtn"
+      onclick="downloadExcel()"
+      class="bg-green-600 text-white px-6 py-2 rounded ml-4 hidden">
+      Download Excel
+    </button>
+  </div>
+
+<script>
+let workbook = null
+let selectedSheet = ''
+let selectedColumns = []
+let newColumns = []
+let processedData = []
+
+document.getElementById('fileInput').addEventListener('change', handleFile)
+
+function handleFile(e) {
+  const file = e.target.files[0]
+  const reader = new FileReader()
+
+  reader.onload = function(event) {
+    workbook = XLSX.read(event.target.result, { type: 'binary' })
+    const sheets = workbook.SheetNames
+
+    const sheetSelect = document.getElementById('sheetSelect')
+    sheetSelect.innerHTML = ''
+
+    sheets.forEach(name => {
+      const option = document.createElement('option')
+      option.value = name
+      option.textContent = name
+      sheetSelect.appendChild(option)
+    })
+
+    selectedSheet = sheets[0]
+    loadColumns()
+
+    document.getElementById('sheetSection').classList.remove('hidden')
+    document.getElementById('columnsSection').classList.remove('hidden')
+    document.getElementById('newColumnSection').classList.remove('hidden')
   }
 
-  const handleFileUpload = (e) => {
-    const file = e.target.files[0]
-    if (!file) return
+  reader.readAsBinaryString(file)
+}
 
-    if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
-      alert('Please upload a valid Excel file.')
-      return
-    }
+document.getElementById('sheetSelect').addEventListener('change', function(e) {
+  selectedSheet = e.target.value
+  loadColumns()
+})
 
-    const reader = new FileReader()
+function loadColumns() {
+  const sheet = workbook.Sheets[selectedSheet]
+  const data = XLSX.utils.sheet_to_json(sheet)
 
-    reader.onload = (event) => {
-      try {
-        const workbook = XLSX.read(event.target.result, { type: 'binary' })
-        setExcelFile(workbook)
-        setSheets(workbook.SheetNames)
-        setSelectedSheet(workbook.SheetNames[0])
+  if (!data.length) return
 
-        const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
-        const data = XLSX.utils.sheet_to_json(firstSheet)
-        if (data.length > 0) {
-          setColumns(Object.keys(data[0]))
-        }
-      } catch {
-        alert('Error reading file.')
-      }
-    }
+  const columns = Object.keys(data[0])
+  const container = document.getElementById('columnsContainer')
+  container.innerHTML = ''
+  selectedColumns = []
 
-    reader.readAsBinaryString(file)
+  columns.forEach(col => {
+    const btn = document.createElement('button')
+    btn.textContent = col
+    btn.className = "p-2 border rounded"
+    btn.onclick = () => toggleColumn(col, btn)
+    container.appendChild(btn)
+  })
+}
+
+function toggleColumn(col, btn) {
+  if (selectedColumns.includes(col)) {
+    selectedColumns = selectedColumns.filter(c => c !== col)
+    btn.classList.remove('bg-blue-100')
+  } else {
+    selectedColumns.push(col)
+    btn.classList.add('bg-blue-100')
   }
+}
 
-  const handleSheetChange = (sheetName) => {
-    setSelectedSheet(sheetName)
-    const sheet = excelFile.Sheets[sheetName]
-    const data = XLSX.utils.sheet_to_json(sheet)
-    if (data.length > 0) {
-      setColumns(Object.keys(data[0]))
-    }
-    setSelectedColumns([])
+function addNewColumn() {
+  const name = document.getElementById('newColumnName').value
+  if (!name) return
+
+  newColumns.push({ name, formula: '' })
+
+  const div = document.createElement('div')
+  div.innerHTML = `
+    <div class="flex gap-2 mb-2">
+      <input placeholder="Formula e.g {Price} * 1.1"
+        class="border p-2 rounded flex-1"
+        oninput="updateFormula(${newColumns.length-1}, this.value)" />
+    </div>
+  `
+  document.getElementById('newColumnsList').appendChild(div)
+  document.getElementById('newColumnName').value = ''
+}
+
+function updateFormula(index, value) {
+  newColumns[index].formula = value
+}
+
+function safeEvaluate(expression) {
+  try {
+    return Function('"use strict"; return (' + expression + ")")()
+  } catch {
+    return expression
   }
+}
 
-  const toggleColumnSelection = (col) => {
-    setSelectedColumns((prev) =>
-      prev.includes(col)
-        ? prev.filter((c) => c !== col)
-        : [...prev, col]
-    )
-  }
+function processExcel() {
+  const sheet = workbook.Sheets[selectedSheet]
+  const data = XLSX.utils.sheet_to_json(sheet)
 
-  const handleAddNewColumn = () => {
-    if (!newColumnName.trim()) {
-      alert('Enter column name')
-      return
-    }
+  processedData = data.map(row => {
+    let newRow = {}
 
-    setNewColumns([...newColumns, { name: newColumnName.trim(), formula: '' }])
-    setNewColumnName('')
-    setShowAddColumn(false)
-  }
+    selectedColumns.forEach(col => {
+      newRow[col] = row[col]
+    })
 
-  const updateColumnFormula = (index, formula) => {
-    const updated = [...newColumns]
-    updated[index].formula = formula
-    setNewColumns(updated)
-  }
-
-  const removeNewColumn = (index) => {
-    setNewColumns(newColumns.filter((_, i) => i !== index))
-  }
-
-  const processExcel = () => {
-    if (!excelFile || selectedColumns.length === 0) {
-      alert('Select at least one column.')
-      return
-    }
-
-    setLoading(true)
-
-    setTimeout(() => {
-      const sheet = excelFile.Sheets[selectedSheet]
-      const data = XLSX.utils.sheet_to_json(sheet)
-
-      const processedRows = data.map((row) => {
-        const newRow = {}
-
-        selectedColumns.forEach((col) => {
-          newRow[col] = row[col]
-        })
-
-        newColumns.forEach((newCol) => {
-          let result = newCol.formula
-
-          Object.keys(row).forEach((key) => {
-            const regex = new RegExp(`\\{${key}\\}`, 'g')
-            result = result.replace(regex, row[key] ?? 0)
-          })
-
-          if (/^[\d\s+\-*/().]+$/.test(result)) {
-            result = safeEvaluate(result)
-          }
-
-          newRow[newCol.name] = result
-        })
-
-        return newRow
+    newColumns.forEach(col => {
+      let result = col.formula
+      Object.keys(row).forEach(key => {
+        const regex = new RegExp(`\\{${key}\\}`, 'g')
+        result = result.replace(regex, row[key] ?? 0)
       })
 
-      setProcessedData(processedRows)
-      setLoading(false)
-    }, 500)
-  }
+      if (/^[\d\s+\-*/().]+$/.test(result)) {
+        result = safeEvaluate(result)
+      }
 
-  const downloadExcel = () => {
-    const ws = XLSX.utils.json_to_sheet(processedData)
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Processed Data')
-    XLSX.writeFile(wb, 'processed_data.xlsx')
-  }
+      newRow[col.name] = result
+    })
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
-      <div className="max-w-6xl mx-auto bg-white rounded-2xl shadow-xl p-6">
+    return newRow
+  })
 
-        <h1 className="text-3xl font-bold flex items-center gap-3 mb-6">
-          <FileSpreadsheet size={36} />
-          Daily Task Automation Tool
-        </h1>
-
-        {/* Upload */}
-        <div className="border-2 border-dashed border-gray-300 p-6 rounded-lg text-center mb-6">
-          <Upload className="mx-auto mb-3 text-gray-400" size={40} />
-          <input type="file" accept=".xlsx,.xls" onChange={handleFileUpload} />
-        </div>
-
-        {sheets.length > 0 && (
-          <>
-            {/* Sheet */}
-            <select
-              value={selectedSheet}
-              onChange={(e) => handleSheetChange(e.target.value)}
-              className="w-full p-2 border rounded mb-4"
-            >
-              {sheets.map((sheet) => (
-                <option key={sheet}>{sheet}</option>
-              ))}
-            </select>
-
-            {/* Columns */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-              {columns.map((col) => (
-                <button
-                  key={col}
-                  onClick={() => toggleColumnSelection(col)}
-                  className={`p-2 border rounded ${
-                    selectedColumns.includes(col)
-                      ? 'bg-blue-100 border-blue-500'
-                      : ''
-                  }`}
-                >
-                  {col}
-                </button>
-              ))}
-            </div>
-
-            {/* Add Column */}
-            <div className="mb-6">
-              <button
-                onClick={() => setShowAddColumn(!showAddColumn)}
-                className="bg-green-600 text-white px-4 py-2 rounded"
-              >
-                <Plus size={16} className="inline mr-2" />
-                Add Column
-              </button>
-
-              {showAddColumn && (
-                <div className="mt-3 flex gap-2">
-                  <input
-                    value={newColumnName}
-                    onChange={(e) => setNewColumnName(e.target.value)}
-                    className="border p-2 rounded flex-1"
-                    placeholder="Column name"
-                  />
-                  <button
-                    onClick={handleAddNewColumn}
-                    className="bg-green-600 text-white px-4 rounded"
-                  >
-                    Create
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {newColumns.map((col, idx) => (
-              <div key={idx} className="flex gap-2 mb-2">
-                <input
-                  value={col.formula}
-                  onChange={(e) => updateColumnFormula(idx, e.target.value)}
-                  placeholder="Formula e.g. {Price} * 1.1"
-                  className="border p-2 rounded flex-1"
-                />
-                <button onClick={() => removeNewColumn(idx)}>
-                  <Trash2 size={18} />
-                </button>
-              </div>
-            ))}
-
-            {/* Process */}
-            <button
-              onClick={processExcel}
-              className="bg-blue-600 text-white px-6 py-2 rounded mt-4"
-            >
-              {loading ? 'Processing...' : 'Process Data'}
-            </button>
-
-            {processedData && (
-              <button
-                onClick={downloadExcel}
-                className="bg-green-600 text-white px-6 py-2 rounded mt-4 ml-4"
-              >
-                <Download size={16} className="inline mr-2" />
-                Download Excel
-              </button>
-            )}
-          </>
-        )}
-      </div>
-    </div>
-  )
+  document.getElementById('downloadBtn').classList.remove('hidden')
+  alert("Processing complete!")
 }
+
+function downloadExcel() {
+  const ws = XLSX.utils.json_to_sheet(processedData)
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, "Processed Data")
+  XLSX.writeFile(wb, "processed_data.xlsx")
+}
+</script>
+
+</body>
+</html>
